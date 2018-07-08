@@ -98,7 +98,6 @@ For example, :nvi will map to (list 'normal 'visual 'insert). See
 (put :local        'lisp-indent-function 'defun)
 (put :localleader  'lisp-indent-function 'defun)
 (put :map          'lisp-indent-function 'defun)
-(put :map*         'lisp-indent-function 'defun)
 (put :mode         'lisp-indent-function 'defun)
 (put :prefix       'lisp-indent-function 'defun)
 (put :textobj      'lisp-indent-function 'defun)
@@ -108,7 +107,6 @@ For example, :nvi will map to (list 'normal 'visual 'insert). See
 ;; specials
 (defvar doom--keymaps nil)
 (defvar doom--prefix  nil)
-(defvar doom--defer   nil)
 (defvar doom--local   nil)
 
 (defmacro map! (&rest rest)
@@ -144,7 +142,6 @@ Flags
     (:localleader [...])       an alias for (:prefix doom-localleader-key ...)
     (:mode [MODE(s)] [...])    inner keybinds are applied to major MODE(s)
     (:map [KEYMAP(s)] [...])   inner keybinds are applied to KEYMAP(S)
-    (:map* [KEYMAP(s)] [...])  same as :map, but deferred
     (:prefix [PREFIX] [...])   assign prefix to all inner keybindings
     (:after [FEATURE] [...])   apply keybinds when [FEATURE] loads
     (:local [...])             make bindings buffer local; incompatible with keymaps!
@@ -164,7 +161,6 @@ Example
            :i \"M-o\" (lambda (interactive) (message \"Hi\"))))"
   (let ((doom--keymaps doom--keymaps)
         (doom--prefix  doom--prefix)
-        (doom--defer   doom--defer)
         (doom--local   doom--local)
         key def states forms desc modes)
     (while rest
@@ -189,7 +185,7 @@ Example
           (:unless  (push `(if (not ,(pop rest)) ,(macroexpand `(map! ,@rest))) forms) (setq rest '()))
           (:after   (push `(after! ,(pop rest)   ,(macroexpand `(map! ,@rest))) forms) (setq rest '()))
           (:desc    (setq desc (pop rest)))
-          (:map*    (setq doom--defer t) (push :map rest))
+          (:map*    (push :map rest))
           (:map
             (setq doom--keymaps (doom-enlist (pop rest))))
           (:mode
@@ -253,11 +249,14 @@ Example
                     ((and doom--keymaps states)
                      (dolist (keymap doom--keymaps)
                        (when (memq 'global states)
-                         (push `(define-key ,keymap ,key ,def) forms))
+                         (push `(defer-until! ,(if (symbolp keymap)
+						   `(and (boundp ',keymap) (keymapp ,keymap))
+						 `(keymapp ,keymap))
+				  (define-key ,keymap ,key ,def))
+			       forms))
                        (when (featurep 'evil)
                          (when-let* ((states (delq 'global states)))
-                           (push `(,(if doom--defer #'evil-define-key #'evil-define-key*)
-                                   ',states ,keymap ,key ,def)
+                           (push `(evil-define-key ',states ,keymap ,key ,def)
                                  forms)))))
                     (states
                      (dolist (state states)
@@ -270,7 +269,11 @@ Example
                                  forms)))))
                     (doom--keymaps
                      (dolist (keymap doom--keymaps)
-                       (push `(define-key ,keymap ,key ,def) forms)))
+                       (push `(defer-until! ,(if (symbolp keymap)
+						 `(and (boundp ',keymap) (keymapp ,keymap))
+					       `(keymapp ,keymap))
+				(define-key ,keymap ,key ,def))
+			     forms)))
                     (t
                      (push `(,(if doom--local #'local-set-key #'global-set-key)
                              ,key ,def)
