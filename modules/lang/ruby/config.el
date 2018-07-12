@@ -70,8 +70,6 @@ environment variables."
         :nv "P" #'rubocop-autocorrect-project))
 
 
-;; FIXME: Clean up all processes from this/inf-ruby when all the ruby buffers
-;; are closed
 (def-package! robe
   :hook (enh-ruby-mode . robe-mode)
   :init
@@ -79,7 +77,8 @@ environment variables."
   (defun +ruby|init-robe ()
     (when (executable-find "ruby")
       (cl-letf (((symbol-function #'yes-or-no-p) (lambda (_) t)))
-        (ignore-errors (robe-start))
+        (save-window-excursion
+          (ignore-errors (robe-start)))
         (when (robe-running-p)
           (add-hook 'kill-buffer-hook #'+ruby|cleanup-robe-servers nil t)))))
   (add-hook 'enh-ruby-mode-hook #'+ruby|init-robe)

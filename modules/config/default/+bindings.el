@@ -169,8 +169,6 @@
         :map evilem-map
         "a" (evilem-create #'evil-forward-arg)
         "A" (evilem-create #'evil-backward-arg)
-        "n" (evilem-create #'evil-ex-search-next)
-        "N" (evilem-create #'evil-ex-search-previous)
         "s" (evilem-create #'evil-snipe-repeat
                            :pre-hook (save-excursion (call-interactively #'evil-snipe-s))
                            :bind ((evil-snipe-scope 'buffer)
@@ -180,7 +178,14 @@
                            :pre-hook (save-excursion (call-interactively #'evil-snipe-s))
                            :bind ((evil-snipe-scope 'buffer)
                                   (evil-snipe-enable-highlight)
-                                  (evil-snipe-enable-incremental-highlight))))
+                                  (evil-snipe-enable-incremental-highlight)))
+        "SPC" #'avy-goto-char-timer
+        "/" (evilem-create #'evil-ex-search-next
+                           :pre-hook (save-excursion (call-interactively #'evil-ex-search-forward))
+                           :bind ((evil-search-wrap)))
+        "?" (evilem-create #'evil-ex-search-previous
+                           :pre-hook (save-excursion (call-interactively #'evil-ex-search-backward))
+                           :bind ((evil-search-wrap))))
 
       ;; evil
       (:after evil
@@ -666,8 +671,12 @@
         :desc "REPL"                  :n  "r" #'+eval/open-repl
                                       :v  "r" #'+eval:repl
         :desc "Dired"                 :n  "-" #'dired-jump
-        :desc "Neotree"               :n  "n" #'+neotree/open
-        :desc "Neotree: find file"    :n  "N" #'+neotree/find-this-file
+        (:when (featurep! :ui neotree)
+          :desc "Project sidebar"              :n  "p" #'+neotree/open
+          :desc "Find file in project sidebar" :n  "P" #'+neotree/find-this-file)
+        (:when (featurep! :ui treemacs)
+          :desc "Project sidebar"              :n  "p" #'+treemacs/toggle
+          :desc "Find file in project sidebar" :n  "P" #'treemacs-find-file)
         :desc "Imenu sidebar"         :nv "i" #'imenu-list-smart-toggle
         :desc "Terminal"              :n  "t" #'+term/open
         :desc "Terminal in popup"     :n  "T" #'+term/open-popup-in-project

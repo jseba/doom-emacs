@@ -157,7 +157,18 @@
 
 
 (def-package! evil-easymotion
-  :commands (evilem-create evilem-default-keybindings))
+  :commands (evilem-create evilem-default-keybindings)
+  :config
+  ;; Use evil-search backend, instead of isearch
+  (evilem-make-motion evilem-motion-search-next #'evil-ex-search-next
+                      :bind ((evil-ex-search-highlight-all nil)))
+  (evilem-make-motion evilem-motion-search-previous #'evil-ex-search-previous
+                      :bind ((evil-ex-search-highlight-all nil)))
+
+  (evilem-make-motion evilem-motion-search-word-forward #'evil-ex-search-word-forward
+                      :bind ((evil-ex-search-highlight-all nil)))
+  (evilem-make-motion evilem-motion-search-word-backward #'evil-ex-search-word-backward
+                      :bind ((evil-ex-search-highlight-all nil))))
 
 
 (def-package! evil-embrace
@@ -357,16 +368,13 @@ the new algorithm is confusing, like in python or ruby."
 ;; matter what mode you're in. I want to be able to visually select a region and
 ;; search for other occurrences of it.
 (def-package! evil-visualstar
-  :commands (global-evil-visualstar-mode
-             evil-visualstar/begin-search
+  :commands (evil-visualstar/begin-search
              evil-visualstar/begin-search-forward
              evil-visualstar/begin-search-backward)
   :init
   (evil-define-key* 'visual 'global
     "*" #'evil-visualstar/begin-search-forward
-    "#" #'evil-visualstar/begin-search-backward)
-  :config
-  (global-evil-visualstar-mode 1))
+    "#" #'evil-visualstar/begin-search-backward))
 
 
 ;;
