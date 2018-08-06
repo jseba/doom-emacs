@@ -106,105 +106,9 @@ Also see `doom-exit-buffer-hook'.")
 
 (fset #'yes-or-no-p #'y-or-n-p) ; y/n instead of yes/no
 
-
-;;
-;; Shims
-;;
-
+;; doesn't exist in terminal Emacs; define it to prevent errors
 (unless (fboundp 'define-fringe-bitmap)
-  ;; doesn't exist in terminal Emacs; define it to prevent errors
   (defun define-fringe-bitmap (&rest _)))
-
-
-;;
-;; Modeline library
-;;
-
-(defvar doom--modeline-fn-alist ())
-(defvar doom--modeline-var-alist ())
-
-(defmacro def-modeline-segment! (name &rest body)
-  "Defines a modeline segment and byte compiles it."
-  (declare (indent defun) (doc-string 2))
-  (let ((sym (intern (format "doom-modeline-segment--%s" name)))
-        (docstring (if (stringp (car body))
-                       (pop body)
-                     (format "%s modeline segment" name))))
-    (cond ((and (symbolp (car body))
-                (not (cdr body)))
-           (add-to-list 'doom--modeline-var-alist (cons name (car body)))
-           `(add-to-list 'doom--modeline-var-alist (cons ',name ',(car body))))
-          (t
-           (add-to-list 'doom--modeline-fn-alist (cons name sym))
-           `(progn
-              (fset ',sym (lambda () ,docstring ,@body))
-              (add-to-list 'doom--modeline-fn-alist (cons ',name ',sym))
-              ,(unless (bound-and-true-p byte-compile-current-file)
-                 `(let (byte-compile-warnings)
-                    (byte-compile #',sym))))))))
-
-(defsubst doom--prepare-modeline-segments (segments)
-  (let (forms it)
-    (dolist (seg segments)
-      (cond ((stringp seg)
-             (push seg forms))
-            ((symbolp seg)
-             (cond ((setq it (cdr (assq seg doom--modeline-fn-alist)))
-                    (push (list it) forms))
-                   ((setq it (cdr (assq seg doom--modeline-var-alist)))
-                    (push it forms))
-                   ((error "%s is not a defined segment" seg))))
-            ((error "%s is not a valid segment" seg))))
-    (nreverse forms)))
-
-(defmacro def-modeline! (name lhs &optional rhs)
-  "Defines a modeline format and byte-compiles it. NAME is a symbol to identify
-it (used by `doom-modeline' for retrieval). LHS and RHS are lists of symbols of
-modeline segments defined with `def-modeline-segment!'.
-
-Example:
-  (def-modeline! minimal
-    (bar matches \" \" buffer-info)
-    (media-info major-mode))
-  (doom-set-modeline 'minimal t)"
-  (let ((sym (intern (format "doom-modeline-format--%s" name)))
-        (lhs-forms (doom--prepare-modeline-segments lhs))
-        (rhs-forms (doom--prepare-modeline-segments rhs)))
-    `(progn
-       (fset ',sym
-             (lambda ()
-               ,(concat "Modeline:\n"
-                        (format "  %s\n  %s"
-                                (prin1-to-string lhs)
-                                (prin1-to-string rhs)))
-               (let ((lhs (list ,@lhs-forms))
-                     (rhs (list ,@rhs-forms)))
-                 (let ((rhs-str (format-mode-line rhs)))
-                   (list lhs
-                         (propertize
-                          " " 'display
-                          `((space :align-to (- (+ right right-fringe right-margin)
-                                                ,(+ 1 (string-width rhs-str))))))
-                         rhs-str)))))
-       ,(unless (bound-and-true-p byte-compile-current-file)
-          `(let (byte-compile-warnings)
-             (byte-compile #',sym))))))
-
-(defun doom-modeline (key)
-  "Returns a mode-line configuration associated with KEY (a symbol). Throws an
-error if it doesn't exist."
-  (let ((fn (intern (format "doom-modeline-format--%s" key))))
-    (when (functionp fn)
-      `(:eval (,fn)))))
-
-(defun doom-set-modeline (key &optional default)
-  "Set the modeline format. Does nothing if the modeline KEY doesn't exist. If
-DEFAULT is non-nil, set the default mode-line for all buffers."
-  (when-let* ((modeline (doom-modeline key)))
-    (setf (if default
-              (default-value 'mode-line-format)
-            (buffer-local-value 'mode-line-format (current-buffer)))
-          (list "%e" modeline))))
 
 
 ;;
@@ -234,6 +138,28 @@ DEFAULT is non-nil, set the default mode-line for all buffers."
 (add-hook 'completion-list-mode-hook #'hide-mode-line-mode)
 (add-hook 'Man-mode-hook #'hide-mode-line-mode)
 
+;; `highlight-numbers-mode' -- better number literal fontification in code
+(setq highlight-numbers-generic-regexp "\\_<[[:digit:]]+.*\\_>")
+(add-hook 'prog-mode-hook #'highlight-numbers-mode)
+
+;; `highlight-escape-sequences'
+(def-package! highlight-escape-sequences
+  :after-call after-find-file
+  :config
+  (defconst hes-python-escape-sequence-re
+    (rx (submatch
+         (and ?\\ (submatch
+                   (or (repeat 1 3 (in "0-7"))
+                       (and ?x (repeat 2 xdigit))
+                       (and ?u (repeat 4 xdigit))
+                       (and ?U (repeat 8 xdigit))
+                       (and ?N "{" (one-or-more alpha) "}")
+                       (any "\"\'\\abfnrtv")))))))
+  (add-to-list 'hes-mode-alist `(python-mode . ,hes-python-escape-sequence-re))
+
+  (add-to-list 'hes-mode-alist `(enh-ruby-mode . ,hes-ruby-escape-sequence-keywords))
+  (hes-mode +1))
+
 ;; `rainbow-delimiters' Helps us distinguish stacked delimiter pairs. Especially
 ;; in parentheses-drunk languages like Lisp.
 (def-package! rainbow-delimiters
@@ -255,9 +181,6 @@ DEFAULT is non-nil, set the default mode-line for all buffers."
 ;;
 ;; Built-in packages
 ;;
-
-;; `hideshow'
-(setq hs-hide-comments-when-hiding-all nil)
 
 ;; show typed keystrokes in minibuffer
 (defun doom|enable-ui-keystrokes ()  (setq echo-keystrokes 0.02))
@@ -324,7 +247,6 @@ DEFAULT is non-nil, set the default mode-line for all buffers."
         show-paren-when-point-inside-paren t)
   (show-paren-mode +1))
 
-;;; More reliable inter-window border
 ;; The native border "consumes" a pixel of the fringe on righter-most splits,
 ;; `window-divider' does not. Available since Emacs 25.1.
 (setq-default window-divider-default-places t
@@ -337,7 +259,7 @@ DEFAULT is non-nil, set the default mode-line for all buffers."
   (remove-hook 'kill-buffer-query-functions #'server-kill-buffer-query-function))
 (add-hook 'server-visit-hook #'server-remove-kill-buffer-hook)
 
-;; `whitespace-mode'
+;; `whitespace-mode' (built-in)
 (setq whitespace-line-column nil
       whitespace-style
       '(face indentation tabs tab-mark spaces space-mark newline newline-mark
@@ -578,7 +500,7 @@ frame's window-system, the theme will be reloaded.")
 
 (defun doom|init-theme ()
   "Set the theme and load the font, in that order."
-  (when doom-theme
+  (when (and doom-theme (not (memq doom-theme custom-enabled-themes)))
     (load-theme doom-theme t)))
 
 ;; Getting themes to remain consistent across GUI Emacs, terminal Emacs and
@@ -588,19 +510,26 @@ frame's window-system, the theme will be reloaded.")
 ;;
 ;; There will still be issues with simultaneous gui and terminal (emacsclient)
 ;; frames, however. There's always `doom/reload-theme' if you need it!
-(defun doom|init-theme-in-frame (frame)
+(defun doom|reload-theme-in-frame-maybe (frame)
   "Reloads the theme in new daemon or tty frames."
   (when (and (framep frame)
              (not (eq doom-last-window-system (framep-on-display frame))))
     (with-selected-frame frame
-      (doom|init-theme))
-    (setq doom-last-window-system (display-graphic-p frame))))
+      (load-theme doom-theme t))
+    (setq doom-last-window-system (framep-on-display frame))))
+
+(defun doom|reload-theme-maybe (_frame)
+  "Reloads the theme after closing the last frame of a type."
+  (unless (cl-find doom-last-window-system (frame-list) :key #'framep-on-display)
+    (setq doom-last-window-system nil)
+    (doom|reload-theme-in-frame (selected-frame))))
 
 ;; fonts
 (add-hook 'doom-init-ui-hook #'doom|init-fonts)
 ;; themes
-(add-hook 'after-make-frame-functions #'doom|init-theme-in-frame)
 (add-hook 'doom-init-ui-hook #'doom|init-theme)
+(add-hook 'after-make-frame-functions #'doom|reload-theme-in-frame-maybe)
+(add-hook 'after-delete-frame-functions #'doom|reload-theme-maybe)
 
 
 ;;

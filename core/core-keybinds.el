@@ -186,7 +186,7 @@ Example
           (:after   (push `(after! ,(pop rest)   ,(macroexpand `(map! ,@rest))) forms) (setq rest '()))
           (:desc    (setq desc (pop rest)))
           (:map*    (push :map rest))
-          (:map
+          ((or :map :map*)
             (setq doom--keymaps (doom-enlist (pop rest))))
           (:mode
             (setq modes (doom-enlist (pop rest)))

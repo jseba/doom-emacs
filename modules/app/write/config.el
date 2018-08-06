@@ -6,12 +6,23 @@
 (defvar +write-line-spacing nil
   "What to set `line-spacing' in `+write-mode'.")
 
+(defun +write|init-line-numbers ()
+  (if +write-mode
+      (doom|enable-line-numbers)
+    (doom|disable-line-numbers)))
+
+(defun +write|init-mixed-pitch ()
+  (mixed-pitch-mode (if +write-mode +1 -1)))
+
+(defun +write|init-visual-fill-column ()
+  (visual-fill-column-mode (if +write-mode +1 -1)))
+
 (add-hook! '+write-mode-hook
   #'(flyspell-mode
-     visual-fill-column-mode
      visual-line-mode
-     mixed-pitch-mode
-     doom|enable-line-numbers
+     +write|init-mixed-pitch
+     +write|init-visual-fill-column
+     +write|init-line-numbers
      +write|init-org-mode))
 
 
@@ -23,11 +34,9 @@
   :when (featurep! +langtool)
   :commands (langtool-check
              langtool-check-done
-             langtool-switch-default-language
              langtool-show-message-at-point
              langtool-correct-buffer)
-  :init
-  (setq langtool-default-language "en-US")
+  :init (setq langtool-default-language "en-US")
   :config
   (defvar langtool-language-tool-jar
     (cond (IS-MAC
@@ -39,25 +48,12 @@
            "/usr/share/java/languagetool/languagetool-commandline.jar"))))
 
 
-(def-package! wordnut
-  :when (featurep! +wordnut)
-  :commands (wordnut-search
-             wordnut-lookup-current-word))
+;; `synosaurus'
+(setq synosaurus-choose-method 'default)
 
 
-(def-package! synosaurus
-  :commands (synosaurus-mode
-             synosaurus-lookup
-             synosaurus-choose-and-replace)
-  :config
-  (setq synosaurus-choose-method 'default))
-
-(def-package! synosaurus-wordnet
-  :commands synosaurus-backend-wordnet)
-
-
-(def-package! mixed-pitch
-  :config
+;; `mixed-pitch'
+(after! mixed-pitch
   (setq mixed-pitch-fixed-pitch-faces
         (append mixed-pitch-fixed-pitch-faces
                 '(org-todo-keyword-todo
@@ -66,6 +62,9 @@
                   org-todo-keyword-wait
                   org-todo-keyword-kill
                   org-todo-keyword-outd
+                  org-todo
+                  line-number
+                  line-number-current-line
                   org-special-keyword
                   org-date
                   org-property-value

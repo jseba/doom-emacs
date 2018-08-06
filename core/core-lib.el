@@ -57,19 +57,18 @@ This is used by `associate!', `file-exists-p!' and `project-file-exists-p!'."
            ,(if (file-name-absolute-p spec)
                 spec
               `(expand-file-name ,spec ,directory))))
-        ((symbolp spec)
-         `(file-exists-p ,(if (and directory
-                                   (or (not (stringp directory))
-                                       (file-name-absolute-p directory)))
-                              `(expand-file-name ,spec ,directory)
-                            spec)))
         ((and (listp spec)
               (memq (car spec) '(or and)))
          `(,(car spec)
            ,@(cl-loop for i in (cdr spec)
                       collect (doom--resolve-path-forms i directory))))
-        ((listp spec)
-         (doom--resolve-path-forms (eval spec t) directory))
+        ((or (symbolp spec)
+             (listp spec))
+         `(file-exists-p ,(if (and directory
+                                   (or (not (stringp directory))
+                                       (file-name-absolute-p directory)))
+                              `(expand-file-name ,spec ,directory)
+                            spec)))
         (t spec)))
 
 (defun doom--resolve-hook-forms (hooks)
@@ -133,7 +132,7 @@ This is used by `associate!', `file-exists-p!' and `project-file-exists-p!'."
                    (relative-to (unless full default-directory))
                    (depth 99999)
                    (mindepth 0)
-                   (match "^[^.]"))
+                   (match "/[^.]"))
   "Returns a list of files/directories in PATH-OR-PATHS (one string path or a
 list of them).
 

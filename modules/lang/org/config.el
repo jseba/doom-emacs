@@ -139,8 +139,8 @@ unfold to point on startup."
       ("^\\*\\(?:Agenda Com\\|Calendar\\|Org \\(?:Export Dispatcher\\|Select\\)\\)"
        :slot -1 :vslot -1 :size #'+popup-shrink-to-fit :ttl 0)
       ("^\\*Org Agenda"    :size 0.35 :select t :ttl nil)
-      ("^\\*Org Src"       :size 0.3 :quit nil :select t)
-      ("^CAPTURE.*\\.org$" :size 0.2 :quit nil :select t))))
+      ("^\\*Org Src"       :size 0.3 :quit nil :select t :autosave t :ttl nil)
+      ("^CAPTURE.*\\.org$" :size 0.2 :quit nil :select t :autosave t))))
 
 (defun +org|setup-pretty-code ()
   "Setup the default pretty symbols for"
@@ -155,6 +155,7 @@ unfold to point on startup."
    org-adapt-indentation nil
    org-cycle-include-plain-lists t
    org-cycle-separator-lines 1
+   org-eldoc-breadcrumb-separator " → "
    org-entities-user
    '(("flat"  "\\flat" nil "" "" "266D" "♭")
      ("sharp" "\\sharp" nil "" "" "266F" "♯"))
@@ -190,6 +191,9 @@ unfold to point on startup."
    ;; Scale up LaTeX previews a bit (default is too small)
    org-preview-latex-image-directory (concat doom-cache-dir "org-latex/")
    org-format-latex-options (plist-put org-format-latex-options :scale 1.5))
+
+  ;; Don't do automatic indent detection in org files
+  (add-to-list 'doom-detect-indentation-excluded-modes 'org-mode nil #'eq)
 
   ;; Previews are usually rendered with light backgrounds, so ensure their
   ;; background (and foreground) match the current theme.
@@ -347,6 +351,12 @@ between the two."
   ;; Don't open separate windows
   (setf (alist-get 'file org-link-frame-setup) #'find-file)
 
+  (defun +org|delayed-recenter ()
+    "`recenter', but after a tiny delay. Necessary to prevent certain race
+conditions where a window's buffer hasn't changed at the time this hook is run."
+    (run-at-time 0.1 nil #'recenter))
+  (add-hook 'org-follow-link-hook #'+org|delayed-recenter)
+
   ;; Fix variable height org-level-N faces in the eldoc string
   (defun +org*fix-font-size-variation-in-eldoc (orig-fn)
     (cl-letf (((symbol-function 'org-format-outline-path)
@@ -355,9 +365,8 @@ between the two."
                   (cl-loop with i = -1
                            for seg in (delq nil path)
                            for face = (nth (% (cl-incf i) org-n-level-faces) org-level-faces)
-                           for spec = (face-all-attributes face)
                            collect (propertize (replace-regexp-in-string "[ \t]+\\'" "" seg)
-                                               'face (if face `(:foreground ,(face-foreground face)))))
+                                               'face (if face `(:foreground ,(face-foreground face nil t)))))
                   separator))))
       (funcall orig-fn)))
   (advice-add #'org-eldoc-get-breadcrumb :around #'+org*fix-font-size-variation-in-eldoc)

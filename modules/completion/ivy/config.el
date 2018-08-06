@@ -9,6 +9,16 @@
   "An alist of tags for `+ivy/tasks' to include in its search, whose CDR is the
 face to render it with.")
 
+(defvar +ivy-project-search-engines '(rg ag pt)
+  "What search tools for `+ivy/project-search' (and `+ivy-file-search' when no
+ENGINE is specified) to try, and in what order.
+
+To disable a particular tool, remove it from this list. To prioritize a tool
+over others, move it to the front of the list. Later duplicates in this list are
+silently ignored.
+
+If you want to already use git-grep or grep, set this to nil.")
+
 (defmacro +ivy-do-action! (action)
   "Returns an interactive lambda that sets the current ivy action and
 immediately runs it on the current candidate (ending the ivy session)."
@@ -47,24 +57,28 @@ immediately runs it on the current candidate (ending the ivy session)."
         ;; enable ability to select prompt (alternative to `ivy-immediate-done')
         ivy-use-selectable-prompt t)
 
-  (after! magit     (setq magit-completing-read-function #'ivy-completing-read))
-  (after! yasnippet (add-to-list 'yas-prompt-functions #'+ivy-yas-prompt nil #'eq))
+  (after! yasnippet
+    (add-to-list 'yas-prompt-functions #'+ivy-yas-prompt nil #'eq))
 
   (define-key! 'global
     [remap switch-to-buffer]       #'ivy-switch-buffer
     [remap persp-switch-to-buffer] #'+ivy/switch-workspace-buffer
     [remap imenu-anywhere]         #'ivy-imenu-anywhere)
 
-  (ivy-mode +1))
+  (ivy-mode +1)
 
+  ;; Show more buffer information in switch-buffer commands
+  (after! ivy-rich
+    (dolist (cmd '(ivy-switch-buffer +ivy/switch-workspace-buffer
+                   counsel-projectile-switch-to-buffer))
+      (ivy-set-display-transformer cmd '+ivy-buffer-transformer)))
 
-;; Show more buffer information in switch-buffer commands
-(def-package! ivy-rich
-  :after ivy
-  :config
-  (dolist (cmd '(ivy-switch-buffer +ivy/switch-workspace-buffer
-                 counsel-projectile-switch-to-buffer))
-    (ivy-set-display-transformer cmd '+ivy-buffer-transformer)))
+  (def-package! ivy-hydra
+    :commands (ivy-dispatching-done-hydra ivy--matcher-desc)
+    :init
+    (define-key! ivy-minibuffer-map
+      "\C-o"      #'+ivy-coo-hydra/body
+      (kbd "M-o") #'ivy-dispatching-done-hydra)))
 
 
 (def-package! counsel
@@ -129,11 +143,9 @@ immediately runs it on the current candidate (ending the ivy session)."
      ("L" (lambda (path) "Insert org-link with absolute path"
             (with-ivy-window (insert (format "[[%s]]" path)))) "insert org-link (abs. path)")))
 
-  ;; Configure `counsel-rg', `counsel-ag' & `counsel-pt'
-  (dolist (cmd '(counsel-ag counsel-rg counsel-pt))
-    (ivy-add-actions
-     cmd
-     '(("O" +ivy-git-grep-other-window-action "open in other window")))))
+  (ivy-add-actions
+   'counsel-ag ; also applies to `counsel-rg' & `counsel-pt'
+   '(("O" +ivy-git-grep-other-window-action "open in other window"))))
 
 
 (def-package! counsel-projectile
@@ -141,24 +153,15 @@ immediately runs it on the current candidate (ending the ivy session)."
              counsel-projectile-grep counsel-projectile-ag counsel-projectile-switch-project)
   :init
   (define-key! 'global
-    [remap projectile-find-file]        #'counsel-projectile-find-file
+    [remap projectile-find-file]        #'+ivy/projectile-find-file
     [remap projectile-find-dir]         #'counsel-projectile-find-dir
     [remap projectile-switch-to-buffer] #'counsel-projectile-switch-to-buffer
     [remap projectile-grep]             #'counsel-projectile-grep
     [remap projectile-ag]               #'counsel-projectile-ag
     [remap projectile-switch-project]   #'counsel-projectile-switch-project)
   :config
-  ;; Highlight entries that have been visited
-  (ivy-set-display-transformer #'counsel-projectile-find-file #'+ivy-projectile-find-file-transformer))
-
-
-(def-package! ivy-hydra
-  :commands (ivy-dispatching-done-hydra ivy--matcher-desc)
-  :init
-  (after! ivy
-    (define-key! ivy-minibuffer-map
-      "\C-o"      #'+ivy-coo-hydra/body
-      (kbd "M-o") #'ivy-dispatching-done-hydra)))
+  ;; no highlighting visited files; slows down the filtering
+  (ivy-set-display-transformer #'counsel-projectile-find-file nil))
 
 
 (def-package! wgrep
@@ -206,8 +209,6 @@ immediately runs it on the current candidate (ending the ivy session)."
   :init
   (setq ivy-re-builders-alist
         '((counsel-ag . ivy--regex-plus)
-          (counsel-rg . ivy--regex-plus)
-          (counsel-pt . ivy--regex-plus)
           (counsel-grep . ivy--regex-plus)
           (swiper . ivy--regex-plus)
           (t . ivy--regex-fuzzy))

@@ -7,7 +7,8 @@ be set before `magithub' (and `magit') is loaded.")
 (defvar +magit-hub-features
   '(pull-request-merge commit-browse completion)
   "What features to initialize when `magithub' is loaded. Set this to `t' to
-load everything.")
+load everything. See `magithub-feature-list' to see what features are
+available.")
 
 
 ;;
@@ -38,14 +39,12 @@ load everything.")
   (define-key magit-status-mode-map [remap magit-mode-bury-buffer] #'+magit/quit))
 
 
-(def-package! magit-blame :after git-timemachine)
-
-
 (def-package! magit-todos
   :hook (magit-mode . magit-todos-mode)
   :config
   (setq magit-todos-require-colon nil)
-  (define-key magit-todos-section-map "j" nil))
+  (define-key magit-todos-section-map "j" nil)
+  (advice-add #'magit-todos-mode :around #'doom*shut-up))
 
 
 (def-package! magithub

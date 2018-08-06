@@ -2,15 +2,8 @@
 
 (defvar +php--company-backends nil)
 
-;; (def-package! hack-mode
-;;   :mode "\\.hh$"
-;;   :config
-;;   (set-company-backend! 'hack-mode '(company-capf)))
-
-
 (def-package! php-mode
   :mode "\\.inc\\'"
-  :interpreter "php"
   :config
   ;; Disable HTML compatibility in php-mode. `web-mode' has superior support for
   ;; php+html. Use the .phtml
@@ -44,16 +37,19 @@
           :n "s"  #'phpunit-current-test)))
 
 
+(def-package! hack-mode
+  :when (featurep! +hack)
+  :mode "\\.hh$")
+
+
 (def-package! php-refactor-mode
   :hook php-mode)
 
 
 (def-package! php-extras
   :after php-mode
-  :init
-  ;; company will set up itself
-  (advice-add #'php-extras-company-setup :override #'ignore)
-  (add-to-list '+php--company-backends 'php-extras-company nil #'eq)
+  :preface (advice-add #'php-extras-company-setup :override #'ignore)
+  :init (add-to-list '+php--company-backends 'php-extras-company nil #'eq)
   :config
   (setq php-extras-eldoc-functions-file
         (concat doom-etc-dir "php-extras-eldoc-functions"))
@@ -74,10 +70,18 @@
 (def-package! company-php
   :when (featurep! :completion company)
   :commands (ac-php-remake-tags ac-php-remake-tags-all)
-  :hook (php-mode . ac-php-core-eldoc-setup)
   :init
   (add-to-list '+php--company-backends 'company-ac-php-backend nil #'eq)
-  :config (setq ac-php-tags-path (concat doom-cache-dir "ac-php/")))
+  (add-hook 'php-mode-hook #'+php|init-ac-php-core-eldoc)
+  (setq ac-php-tags-path (concat doom-cache-dir "ac-php/"))
+  ;; loaded by `company-php'
+  (after! ac-php-core
+    (when (equal ac-php-ctags-executable
+                 (concat ac-php-root-directory "phpctags"))
+      ;; prioritize phpctags in PATH
+      (setq ac-php-ctags-executable
+            (or (executable-find "phpctags")
+                ac-php-ctags-executable)))))
 
 
 ;;

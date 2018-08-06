@@ -16,6 +16,10 @@ modes are active and the buffer is read-only.")
 indentation settings or not. This should be set by editorconfig if it
 successfully sets indent_style/indent_size.")
 
+(defvar doom-detect-indentation-excluded-modes '(fundamental-mode)
+  "A list of major modes in which indentation should be automatically
+detected.")
+
 (setq-default
  large-file-warning-threshold 30000000
  vc-follow-symlinks t
@@ -93,7 +97,13 @@ fundamental-mode) for performance sake."
         savehist-save-minibuffer-history t
         savehist-autosave-interval nil ; save on kill only
         savehist-additional-variables '(kill-ring search-ring regexp-search-ring))
-  (savehist-mode +1))
+  (savehist-mode +1)
+
+  (defun doom|unpropertize-kill-ring ()
+    "Remove text properties from `kill-ring' in the interest of shrinking the
+savehist file."
+    (setq kill-ring (mapcar #'substring-no-properties kill-ring)))
+  (add-hook 'kill-emacs-hook #'doom|unpropertize-kill-ring))
 
 ;; persistent point location in buffers
 (def-package! saveplace
@@ -114,7 +124,7 @@ fundamental-mode) for performance sake."
   :commands recentf-open-files
   :config
   (setq recentf-save-file (concat doom-cache-dir "recentf")
-        recentf-auto-cleanup 120
+        recentf-auto-cleanup 'never
         recentf-max-menu-items 0
         recentf-max-saved-items 300
         recentf-filename-handlers '(file-truename)
@@ -124,7 +134,9 @@ fundamental-mode) for performance sake."
               "^/var/folders/.+$"
               ;; ignore private DOOM temp files (but not all of them)
               (lambda (file) (file-in-directory-p file doom-local-dir))))
-  (quiet! (recentf-mode +1)))
+  (unless noninteractive
+    (add-hook 'kill-emacs-hook #'recentf-cleanup)
+    (quiet! (recentf-mode +1))))
 
 (def-package! server
   :when (display-graphic-p)
@@ -139,7 +151,8 @@ fundamental-mode) for performance sake."
 ;; Core Plugins
 ;;
 
-;; Auto-close delimiters and blocks as you type
+;; Auto-close delimiters and blocks as you type. It's more powerful than that,
+;; but that is all Doom uses it for.
 (def-package! smartparens
   :after-call (doom-exit-buffer-hook after-find-file)
   :commands (sp-pair sp-local-pair sp-with-modes)
@@ -155,7 +168,9 @@ fundamental-mode) for performance sake."
         sp-max-prefix-length 50
         sp-escape-quotes-after-insert nil)  ; not smart enough
 
-  ;; Slim down on smartparens' opinionated behavior
+  ;; Smartparens' navigation feature is neat, but does not justify how expensive
+  ;; it is. It's also less useful for evil users. This may need to be
+  ;; reactivated for non-evil users though. Needs more testing!
   (defun doom|disable-smartparens-navigate-skip-match ()
     (setq sp-navigate-skip-match nil
           sp-navigate-consider-sgml-tags nil))
@@ -170,56 +185,86 @@ fundamental-mode) for performance sake."
   (add-hook 'minibuffer-setup-hook #'doom|init-smartparens-in-eval-expression)
   (sp-local-pair 'minibuffer-inactive-mode "'" nil :actions nil)
 
-  ;; smartparenss conflicts with evil-mode's replace state
+  ;; smartparens breaks evil-mode's replace state
   (add-hook 'evil-replace-state-entry-hook #'turn-off-smartparens-mode)
   (add-hook 'evil-replace-state-exit-hook  #'turn-on-smartparens-mode)
 
   (smartparens-global-mode +1))
 
+;; Automatic detection of indent settings
+(def-package! dtrt-indent
+  :unless noninteractive
+  :defer t
+  :init
+  (defun doom|detect-indentation ()
+    (unless (or (not after-init-time)
+                doom-inhibit-indent-detection
+                (member (substring (buffer-name) 0 1) '(" " "*"))
+                (memq major-mode doom-detect-indentation-excluded-modes))
+      (dtrt-indent-mode +1)))
+  (add-hook! '(change-major-mode-after-body-hook read-only-mode-hook)
+    #'doom|detect-indentation)
+  :config
+  (setq dtrt-indent-verbosity (if doom-debug-mode 2 0))
+  (add-to-list 'dtrt-indent-hook-generic-mapping-list '(t tab-width)))
+
 ;; Branching undo
 (def-package! undo-tree
   :after-call (doom-exit-buffer-hook after-find-file)
   :config
-  ;; persistent undo history is known to cause undo history corruption, which
-  ;; can be very destructive! So disable it!
-  (setq undo-tree-auto-save-history nil
+  (setq undo-tree-auto-save-history t
+        ;; undo-in-region is known to cause undo history corruption, which can
+        ;; be very destructive! Disabling it deters the error, but does not fix
+        ;; it entirely!
+        undo-tree-enable-undo-in-region nil
         undo-tree-history-directory-alist
-        (list (cons "." (concat doom-cache-dir "undo-tree-hist/"))))
-  (global-undo-tree-mode +1))
+        `(("." . ,(concat doom-cache-dir "undo-tree-hist/"))))
+  (global-undo-tree-mode +1)
+
+  ;; compress undo with xz
+  (advice-add #'undo-tree-make-history-save-file-name :filter-return
+              (cond ((executable-find "zstd") (lambda (file) (concat file ".zst")))
+                    ((executable-find "gzip") (lambda (file) (concat file ".gz")))))
+
+  (advice-add #'undo-tree-load-history :around #'doom*shut-up)
+
+  (defun doom*strip-text-properties-from-undo-history (orig-fn &rest args)
+    (dolist (item buffer-undo-list)
+      (and (consp item)
+           (stringp (car item))
+           (setcar item (substring-no-properties (car item)))))
+    (apply orig-fn args))
+  (advice-add 'undo-list-transfer-to-tree :around #'doom*strip-text-properties-from-undo-history)
+
+  (defun doom*compress-undo-tree-history (orig-fn &rest args)
+    (cl-letf* ((jka-compr-verbose nil)
+               (old-write-region (symbol-function #'write-region))
+               ((symbol-function #'write-region)
+                (lambda (start end filename &optional append _visit &rest args)
+                  (apply old-write-region start end filename append 0 args))))
+      (apply orig-fn args)))
+  (advice-add #'undo-tree-save-history :around #'doom*compress-undo-tree-history))
 
 
 ;;
 ;; Autoloaded Plugins
 ;;
 
+;; `command-log-mode'
 (setq command-log-mode-auto-show t
       command-log-mode-open-log-turns-on-mode t)
-
-(def-package! dtrt-indent
-  :unless noninteractive
-  :defer t
-  :init
-  (defun doom|detect-indentation ()
-    (unless (or doom-inhibit-indent-detection
-                buffer-read-only
-                (memq major-mode '(fundamental-mode org-mode))
-                (not (derived-mode-p 'prog-mode 'text-mode 'conf-mode)))
-      (require 'dtrt-indent)
-      (dtrt-indent-mode +1)))
-  (add-hook 'after-change-major-mode-hook #'doom|detect-indentation)
-  :config
-  (setq dtrt-indent-verbosity (if doom-debug-mode 2 0))
-  (add-to-list 'dtrt-indent-hook-generic-mapping-list '(t tab-width)))
 
 (def-package! expand-region
   :commands (er/contract-region er/mark-symbol er/mark-word)
   :config
   (defun doom*quit-expand-region ()
+    "Properly abort an expand-region region."
     (when (memq last-command '(er/expand-region er/contract-region))
       (er/contract-region 0)))
   (advice-add #'evil-escape :before #'doom*quit-expand-region)
   (advice-add #'doom/escape :before #'doom*quit-expand-region))
 
+;; A better *help* buffer
 (def-package! helpful
   :defer t
   :init

@@ -6,13 +6,14 @@
     (doom-molokai . t)
     (doom-nord . t)
     (doom-nord-light . t)
-    (doom-nova . nil)
+    (doom-nova)
     (doom-one . t)
     (doom-one-light . t)
     (doom-opera . t)
-    (doom-solarized-light . nil)
-    (doom-spacegrey . nil)
-    (doom-vibrant . nil))
+    (doom-solarized-light)
+    (doom-spacegrey)
+    (doom-vibrant)
+    (doom-tomorrow-night))
   "An alist of themes that support `solaire-mode'. If CDR is t, then use
 `solaire-mode-swap-bg'.")
 
@@ -23,6 +24,7 @@
 
 ;; <https://github.com/hlissner/emacs-doom-theme>
 (def-package! doom-themes
+  :load-path "~/work/plugins/emacs-doom-themes/"
   :defer t
   :init
   (unless doom-theme
@@ -60,24 +62,4 @@
   ;; org-capture takes an org buffer and narrows it. The result is erroneously
   ;; considered an unreal buffer, so solaire-mode must be restored.
   (add-hook 'org-capture-mode-hook #'turn-on-solaire-mode))
-
-
-(after! hideshow
-  (defface +doom-folded-face `((t (:inherit font-lock-comment-face :weight light)))
-    "Face to hightlight `hideshow' overlays."
-    :group 'doom-themes)
-
-  ;; Nicer code-folding overlays (with fringe indicators)
-  (defun +doom-set-up-overlay (ov)
-    (when (eq 'code (overlay-get ov 'hs))
-      (when (featurep 'vimish-fold)
-        (overlay-put
-         ov 'before-string
-         (propertize "…" 'display
-                     (list vimish-fold-indication-mode
-                           'empty-line
-                           'vimish-fold-fringe))))
-      (overlay-put
-       ov 'display (propertize "  [...]  " 'face '+doom-folded-face))))
-  (setq hs-set-up-overlay #'+doom-set-up-overlay))
 

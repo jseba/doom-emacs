@@ -9,19 +9,31 @@
   (advice-add #'git-timemachine--show-minibuffer-details :override #'+vc*update-header-line)
 
   (after! evil
-    ;; Force evil to rehash keybindings for the current state
-    (add-hook 'git-timemachine-mode-hook #'evil-normalize-keymaps)))
+    ;; rehash evil keybindings so they are recognized
+    (add-hook 'git-timemachine-mode-hook #'evil-normalize-keymaps))
+
+  (when (featurep! :tools magit)
+    (add-transient-hook! #'git-timemachine-blame (require 'magit-blame))))
 
 
 ;; `git-commit-mode'
+(after! git-commit-mode
+  (set-yas-minor-mode! 'git-commit-mode))
+
 (defun +vc|enforce-git-commit-conventions ()
   "See https://chris.beams.io/posts/git-commit/"
   (setq fill-column 72
         git-commit-summary-max-length 50
         git-commit-style-convention-checks '(overlong-summary-line non-empty-second-line)))
 (add-hook 'git-commit-mode-hook #'+vc|enforce-git-commit-conventions)
-(when (featurep! :feature evil)
-  (add-hook 'git-commit-mode-hook #'evil-insert-state))
+
+(defun +vc|start-in-insert-state-maybe ()
+  "Start git-commit-mode in insert state if in a blank commit message,
+otherwise in default state."
+  (when (and (bound-and-true-p evil-mode)
+             (bobp) (eolp))
+    (evil-insert-state)))
+(add-hook 'git-commit-setup-hook #'+vc|start-in-insert-state-maybe)
 
 
 ;;

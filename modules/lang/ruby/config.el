@@ -1,10 +1,11 @@
 ;;; lang/ruby/config.el -*- lexical-binding: t; -*-
 
-(defvar +ruby-rbenv-versions nil
-  "Available versions of ruby in rbenv.")
+(defvar +ruby-mode-line-indicator
+  '("Ruby" (+ruby-version (" " +ruby-version)))
+  "Format for the ruby version/env indicator in the mode-line.")
 
-(defvar-local +ruby-current-version nil
-  "The currently active ruby version.")
+(defvar-local +ruby-version nil
+  "The ruby version in the current buffer.")
 
 
 ;;
@@ -18,45 +19,24 @@
   :mode "\\.\\(?:pry\\|irb\\)rc\\'"
   :mode "/\\(?:Gem\\|Cap\\|Vagrant\\|Rake\\|Pod\\|Puppet\\|Berks\\)file\\'"
   :config
-  (set-env! "RBENV_ROOT")
   (set-electric! 'enh-ruby-mode :words '("else" "end" "elsif"))
   (set-repl-handler! 'enh-ruby-mode #'inf-ruby) ; `inf-ruby'
 
   ;; so class and module pairs work
   (setq-hook! 'enh-ruby-mode-hook sp-max-pair-length 6)
 
-  ;; Version management with rbenv
-  (defun +ruby|add-version-to-modeline ()
-    "Add version string to the major mode in the modeline."
-    (setq mode-name
-          (if +ruby-current-version
-              (format "Ruby %s" +ruby-current-version)
-            "Ruby")))
-  (add-hook 'enh-ruby-mode-hook #'+ruby|add-version-to-modeline)
+  ;; Add ruby version string to the major mode in the modeline
+  (defun +ruby|adjust-mode-line ()
+    (setq mode-name +ruby-mode-line-indicator))
+  (add-hook 'enh-ruby-mode-hook #'+ruby|adjust-mode-line)
 
-  (if (not (executable-find "rbenv"))
-      (setq-default +ruby-current-version (string-trim (shell-command-to-string "ruby --version 2>&1 | cut -d' ' -f2")))
-    (setq +ruby-rbenv-versions (split-string (shell-command-to-string "rbenv versions --bare") "\n" t))
-
-    (defun +ruby|detect-rbenv-version ()
-      "Detect the rbenv version for the current project and set the relevant
-environment variables."
-      (when-let* ((version-str (shell-command-to-string "RBENV_VERSION= ruby --version 2>&1 | cut -d' ' -f2")))
-        (setq version-str (string-trim version-str)
-              +ruby-current-version version-str)
-        (when (member version-str +ruby-rbenv-versions)
-          (setenv "RBENV_VERSION" version-str))))
-    (add-hook 'enh-ruby-mode-hook #'+ruby|detect-rbenv-version)))
+  (defun +ruby|update-version (&rest _)
+    (setq +ruby-version (+ruby-version)))
+  (+ruby|update-version)
+  (add-hook 'enh-ruby-mode-hook #'+ruby|update-version))
 
 
 (def-package! yard-mode :hook enh-ruby-mode)
-
-
-(def-package! rbenv
-  :after enh-ruby-mode
-  :config
-  (when (executable-find "rbenv")
-    (global-rbenv-mode +1)))
 
 
 (def-package! rubocop
@@ -89,9 +69,6 @@ environment variables."
 (def-package! rspec-mode
   :mode ("/\\.rspec\\'" . text-mode)
   :init
-  (associate! rspec-mode :match "/\\.rspec$")
-  (associate! rspec-mode :modes (enh-ruby-mode yaml-mode) :files ("spec/"))
-
   (defvar evilmi-ruby-match-tags
     '((("unless" "if") ("elsif" "else") "end")
       ("begin" ("rescue" "ensure") "end")
@@ -100,14 +77,20 @@ environment variables."
       ;; Rake
       (("task" "namespace") () "end")))
 
-  ;; This package autoloads this advice, but does not autoload the advice
-  ;; function, causing void-symbol errors when using the compilation buffer
-  ;; (even for things unrelated to ruby/rspec). Even if the function were
-  ;; autoloaded, it seems silly to add this advice before rspec-mode is loaded,
-  ;; so remove it anyway!
-  (advice-remove 'compilation-buffer-name #'rspec-compilation-buffer-name-wrapper)
+  (unless (featurep! :feature evil)
+    (setq rspec-verifiable-mode-keymap (make-sparse-keymap) "TODO")
+    (setq rspec-mode-keymap (make-sparse-keymap) "TODO"))
+
+  (defun +ruby*init-appropriate-rspec-mode ()
+    "TODO"
+    (cond ((rspec-buffer-is-spec-p)
+           (rspec-mode +1))
+          ((let ((proot (doom-project-root 'nocache)))
+             (or (file-directory-p (expand-file-name "spec" proot))
+                 (file-exists-p (expand-file-name ".rspec" proot))))
+           (rspec-verifiable-mode +1))))
+  (advice-add #'rspec-enable-appropriate-mode :override #'+ruby*init-appropriate-rspec-mode)
   :config
-  (remove-hook 'enh-ruby-mode-hook #'rspec-enable-appropriate-mode)
   (map! :map (rspec-mode-map rspec-verifiable-mode-map)
         :localleader
         :prefix "t"
@@ -126,4 +109,22 @@ environment variables."
   :when (featurep! :completion company)
   :after inf-ruby
   :config (set-company-backend! 'inf-ruby-mode 'company-inf-ruby))
+
+
+;;
+;; Version managers
+;;
+
+(def-package! rbenv
+  :when (featurep! +rbenv)
+  :after enh-ruby-mode
+  :config
+  (set-env! "RBENV_ROOT")
+  (when (executable-find "rbenv")
+    (global-rbenv-mode +1)))
+
+
+(def-package! rvm
+  :when (featurep! +rvm)
+  :after enh-ruby-mode)
 

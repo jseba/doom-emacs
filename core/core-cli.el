@@ -258,7 +258,7 @@ problems with doom."
                          current-rev rev)
                 ;; TODO Display newsletter diff
                 (unless (or doom-auto-accept (y-or-n-p "Proceed?"))
-                  (error "Aborted"))
+                  (user-error "Aborted"))
                 (message "Removing byte-compiled files from your config (if any)")
                 (doom-clean-byte-compiled-files)
                 (unless (zerop (process-file "git" nil buf nil "reset" "--hard"
@@ -339,7 +339,7 @@ it exists."
 
 (defun doom--warn-refresh-session ()
   (message "Detected a running Emacs session.\n")
-  (message "Use `M-x doom/reload' for changes to take effect."))
+  (message "Restart Emacs or use `M-x doom/reload' for changes to take effect."))
 
 (defun doom--do-load (&rest files)
   (if (and noninteractive (not (daemonp)))
@@ -469,14 +469,16 @@ even if it doesn't need reloading!"
                                          "No documentation.")))
                         (push (cond ((not (and member-p
                                                (or (null pred)
-                                                   (eval (read pred) t))))
+                                                   (let ((load-file-name path))
+                                                     (eval (read pred) t)))))
                                      (push doom-file-form forms)
                                      (setq docstring (format "THIS FUNCTION DOES NOTHING BECAUSE %s IS DISABLED\n\n%s"
                                                              origin docstring))
                                      (condition-case-unless-debug e
                                          (append (list (pcase type
                                                          (`defun 'defmacro)
-                                                         (`cl-defun `cl-defmacro))
+                                                         (`cl-defun `cl-defmacro)
+                                                         (_ type))
                                                        name arglist docstring)
                                                  (cl-loop for arg in arglist
                                                           if (and (symbolp arg)
@@ -490,9 +492,6 @@ even if it doesn't need reloading!"
                                         (message "Ignoring autodef %s (%s)"
                                                  name e)
                                         nil)))
-                                    ((memq type '(defmacro cl-defmacro))
-                                     (push doom-file-form forms)
-                                     sexp)
                                     ((make-autoload sexp (abbreviate-file-name (file-name-sans-extension path)))))
                               forms)
                         (push `(put ',name 'doom-module ',origin) forms))))
@@ -503,7 +502,8 @@ even if it doesn't need reloading!"
                             (target (doom-unquote target)))
                         (unless (and member-p
                                      (or (null pred)
-                                         (eval (read pred) t)))
+                                         (let ((load-file-name path))
+                                           (eval (read pred) t))))
                           (setq target #'ignore))
                         (push doom-file-form forms)
                         (push `(put ',name 'doom-module ',origin) forms)

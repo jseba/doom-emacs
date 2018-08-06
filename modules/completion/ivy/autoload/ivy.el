@@ -147,8 +147,10 @@ search current file. See `+ivy-task-tags' to customize what this searches for."
                     (if arg
                         (concat "in: " (file-relative-name buffer-file-name))
                       "project"))
-            (+ivy--tasks-candidates
-             (+ivy--tasks (if arg buffer-file-name (doom-project-root))))
+            (let ((tasks (+ivy--tasks (if arg buffer-file-name (doom-project-root)))))
+              (unless tasks
+                (user-error "No tasks in your project! Good job!"))
+              (+ivy--tasks-candidates tasks))
             :action #'+ivy--tasks-open-action
             :caller '+ivy/tasks))
 
@@ -207,6 +209,29 @@ search current file. See `+ivy-task-tags' to customize what this searches for."
 ;;
 
 ;;;###autoload
+(defun +ivy/projectile-find-file ()
+  "A more sensible `counsel-projectile-find-file', which will revert to
+`counsel-find-file' if invoked from $HOME, `counsel-file-jump' if invoked from a
+non-project, `projectile-find-file' if in a bug project (more than
+`ivy-sort-max-size' files), or `counsel-projectile-find-file' otherwise.
+
+The point of this is to avoid Emacs locking up indexing massive file trees."
+  (interactive)
+  (call-interactively
+   (cond ((or (file-equal-p default-directory "~")
+              (when-let* ((proot (doom-project-root 'nocache)))
+                (file-equal-p proot "~")))
+          #'counsel-find-file)
+
+         ((doom-project-p 'nocache)
+          (let ((files (projectile-current-project-files)))
+            (if (<= (length files) ivy-sort-max-size)
+                #'counsel-projectile-find-file
+              #'projectile-find-file)))
+
+         (#'counsel-file-jump))))
+
+;;;###autoload
 (cl-defun +ivy-file-search (engine &key query in all-files (recursive t))
   "Conduct a file search using ENGINE, which can be any of: rg, ag, pt, and
 grep. If omitted, ENGINE will default to the first one it detects, in that
@@ -224,9 +249,9 @@ order.
          (directory (or in project-root))
          (default-directory directory)
          (engine (or engine
-                     (and (executable-find "rg") 'rg)
-                     (and (executable-find "ag") 'ag)
-                     (and (executable-find "pt") 'pt)
+                     (cl-loop for tool in +ivy-project-search-engines
+                              if (executable-find (symbol-name tool))
+                              return tool)
                      (and (or (executable-find "grep")
                               (executable-find "git"))
                           'grep)
@@ -285,11 +310,12 @@ list of: ripgrep, ag, pt, git-grep and grep. If ARG (universal argument),
 preform search from current directory."
   (interactive "P")
   (call-interactively
-   (cond ((executable-find "rg") (if arg #'+ivy/rg-from-cwd #'+ivy/rg))
-         ((executable-find "ag") (if arg #'+ivy/ag-from-cwd #'+ivy/ag))
-         ((executable-find "pt") (if arg #'+ivy/pt-from-cwd #'+ivy/pt))
-         (arg #'+ivy/grep-from-cwd)
-         (#'+ivy/grep))))
+   (or (cl-loop for tool in (cl-remove-duplicates +ivy-project-search-engines :from-end t)
+                if (executable-find (symbol-name tool))
+                return (intern (format "+ivy/%s%s" tool (if arg "-from-cwd" ""))))
+       (if arg
+           #'+ivy/grep-from-cwd
+         #'+ivy/grep))))
 
 ;;;###autoload
 (defun +ivy/rg (all-files-p &optional query directory)

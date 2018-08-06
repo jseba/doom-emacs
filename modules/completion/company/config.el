@@ -12,13 +12,13 @@
         company-require-match 'never
         company-global-modes
         '(not comint-mode erc-mode message-mode help-mode gud-mode eshell-mode)
+        company-backends '(company-dabbrev)
         company-frontends
         '(company-pseudo-tooltip-frontend
           company-echo-metadata-frontend)
-        company-backends
-        '((:separate company-capf company-yasnippet))
         company-transformers '(company-sort-by-occurrence))
   :config
+  (add-hook 'company-mode-hook #'+company|init-backends)
   (global-company-mode +1))
 
 
@@ -27,6 +27,13 @@
   :defer 2
   :after-call post-self-insert-hook
   :config (setq company-idle-delay 0.2))
+
+
+(def-package! company-prescient
+  :hook (company-mode . company-prescient-mode)
+  :config
+  (setq prescient-save-file (concat doom-cache-dir "prescient-save.el"))
+  (prescient-persist-mode +1))
 
 
 (def-package! company-box

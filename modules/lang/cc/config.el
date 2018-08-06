@@ -26,36 +26,18 @@ compilation database is present in the project.")
 (def-package! cc-mode
   :commands (c-mode c++-mode objc-mode java-mode)
   :mode ("\\.mm\\'" . objc-mode)
-  :preface
-  ;; The plusses in c++-mode can be annoying to search for ivy/helm (which reads
-  ;; queries as regexps), so wee add these for convenience.
-  (defalias 'cpp-mode 'c++-mode)
-  (defvaralias 'cpp-mode-map 'c++-mode-map)
-
-  (defun +cc-c++-header-file-p ()
-    (and buffer-file-name
-         (equal (file-name-extension buffer-file-name) "h")
-         (or (file-exists-p (expand-file-name
-                             (concat (file-name-sans-extension buffer-file-name)
-                                     ".cpp")))
-             (when-let* ((file (car-safe (projectile-get-other-files
-                                          buffer-file-name
-                                          (projectile-current-project-files)))))
-               (equal (file-name-extension file) "cpp")))))
-
-  (defun +cc-objc-header-file-p ()
-    (and buffer-file-name
-         (equal (file-name-extension buffer-file-name) "h")
-         (re-search-forward "@\\<interface\\>" magic-mode-regexp-match-limit t)))
-
-  (unless (assq '+cc-c++-header-file-p magic-mode-alist)
-    (push '(+cc-c++-header-file-p  . c++-mode)  magic-mode-alist)
-    (push '(+cc-objc-header-file-p . objc-mode) magic-mode-alist))
-
   :init
   (setq-default c-basic-offset tab-width
                 c-backspace-function #'delete-backward-char
                 c-default-style "doom")
+
+  ;; The plusses in c++-mode can be annoying to search for ivy/helm (which reads
+  ;; queries as regexps), so we add these for convenience.
+  (defalias 'cpp-mode 'c++-mode)
+  (defvaralias 'cpp-mode-map 'c++-mode-map)
+
+  ;; Activate `c-mode', `c++-mode' or `objc-mode' depending on heuristics
+  (add-to-list 'auto-mode-alist '("\\.h\\'" . +cc-c-c++-objc-mode))
 
   :config
   (set-electric! '(c-mode c++-mode objc-mode java-mode) :chars '(?\n ?\}))
@@ -79,8 +61,7 @@ compilation database is present in the project.")
   ;;; Better fontification (also see `modern-cpp-font-lock')
   (add-hook 'c-mode-common-hook #'rainbow-delimiters-mode)
   (add-hook! '(c-mode-hook c++-mode-hook)
-    #'(highlight-numbers-mode
-       +cc|fontify-constants))
+    #'(+cc|fontify-constants))
 
   ;; Custom style, based off of linux
   (unless (assoc "doom" c-style-alist)
@@ -221,6 +202,10 @@ compilation database is present in the project.")
   (setq rtags-autostart-diagnostics t
         rtags-use-bookmarks nil
         rtags-completions-enabled nil
+        rtags-display-result-backend
+        (cond ((featurep! :completion ivy)  'ivy)
+              ((featurep! :completion helm) 'helm)
+              ('default))
         ;; If not using ivy or helm to view results, use a pop-up window rather
         ;; than displaying it in the current window...
         rtags-results-buffer-other-window t
@@ -235,16 +220,8 @@ compilation database is present in the project.")
   (add-hook! 'kill-emacs-hook (ignore-errors (rtags-cancel-process)))
 
   ;; Use rtags-imenu instead of imenu/counsel-imenu
-  (define-key! (c-mode-map c++-mode-map) [remap imenu] #'rtags-imenu)
+  (define-key! (c-mode-map c++-mode-map) [remap imenu] #'+cc/imenu)
 
   (when (featurep 'evil)
     (add-hook 'rtags-jump-hook #'evil-set-jump))
-  (add-hook 'rtags-after-find-file-hook #'recenter)
-
-  (def-package! ivy-rtags
-    :when (featurep! :completion ivy)
-    :config (setq rtags-display-result-backend 'ivy))
-
-  (def-package! helm-rtags
-    :when (featurep! :completion helm)
-    :config (setq rtags-display-result-backend 'helm)))
+  (add-hook 'rtags-after-find-file-hook #'recenter))

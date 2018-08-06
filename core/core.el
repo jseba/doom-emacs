@@ -160,7 +160,7 @@ else (except for `window-setup-hook').")
  ;; History & backup settings (save nothing, that's what git is for)
  auto-save-default nil
  create-lockfiles nil
- history-length 500
+ history-length 250
  make-backup-files nil  ; don't create backup~ files
  ;; byte compilation
  byte-compile-verbose doom-debug-mode
@@ -186,7 +186,8 @@ else (except for `window-setup-hook').")
  tramp-backup-directory-alist backup-directory-alist
  tramp-persistency-file-name  (concat doom-cache-dir "tramp-persistency.el")
  url-cache-directory          (concat doom-cache-dir "url/")
- url-configuration-directory  (concat doom-etc-dir "url/"))
+ url-configuration-directory  (concat doom-etc-dir "url/")
+ gamegrid-user-score-file-directory (concat doom-etc-dir "games/"))
 
 (defvar doom-auto-minor-mode-alist '()
   "Alist mapping filename patterns to corresponding minor mode functions, like
@@ -313,7 +314,7 @@ If RETURN-P, return the message as a string instead of displaying it."
 ;; Bootstrap functions
 ;;
 
-(defun doom-initialize (&optional force-p)
+(defun doom-initialize (&optional force-p force-load-core-p)
   "Bootstrap Doom, if it hasn't already (or if FORCE-P is non-nil).
 
 The bootstrap process involves making sure 1) the essential directories exist,
@@ -367,7 +368,7 @@ to least)."
       (user-error "Your package autoloads are missing! Run `bin/doom refresh' to regenerate them")))
 
   (require 'core-os)
-  (unless noninteractive
+  (when (or force-load-core-p (not noninteractive))
     (add-hook! 'emacs-startup-hook
       #'(doom|post-init doom|display-benchmark))
     (require 'core-ui)

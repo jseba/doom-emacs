@@ -35,7 +35,7 @@
 ;;
 
 ;; `company'
-(after! company
+(progn
   (defun +popup*dont-select-me (orig-fn &rest args)
     (let ((+popup--inhibit-select t))
       (apply orig-fn args)))
@@ -43,7 +43,7 @@
 
 
 ;; `eshell'
-(after! eshell
+(progn
   (setq eshell-destroy-buffer-when-process-dies t)
 
   ;; When eshell runs a visual command (see `eshell-visual-commands'), it spawns
@@ -59,7 +59,7 @@
 
 
 ;; `evil'
-(after! evil
+(progn
   (defun +popup*evil-command-window (hist cmd-key execute-fn)
     "The evil command window has a mind of its own (uses `switch-to-buffer'). We
 monkey patch it to use pop-to-buffer, and to remember the previous window."
@@ -150,7 +150,7 @@ the command buffer."
 
 
 ;; `helpful'
-(after! helpful
+(progn
   ;; Open link in origin window (non-popup) instead of inside the popup window.
   (defun +popup*helpful--navigate (button)
     (let ((path (substring-no-properties (button-get button 'path)))
@@ -169,12 +169,22 @@ the command buffer."
 
 ;; `helm'
 (after! helm
-  (setq helm-default-display-buffer-functions '(+popup-display-buffer-stacked-side-window))
-  (set-popup-rule! "^\\*helm" :ignore t))
+  (set-popup-rule! "^\\*helm" :ignore t)
+  (setq helm-default-display-buffer-functions '(+popup-display-buffer-stacked-side-window)
+        helm-display-buffer-default-height 0.22)
+
+  ;; Fix left-over popup window when closing persistent help for `helm-M-x'
+  (defun +popup*helm-elisp--persistent-help (candidate _fun &optional _name)
+    (let (win)
+      (when (and (helm-attr 'help-running-p)
+                 (string= candidate (helm-attr 'help-current-symbol))
+                 (setq win (get-buffer-window (get-buffer (help-buffer)))))
+        (delete-window win))))
+  (advice-add #'helm-elisp--persistent-help :before #'+popup*helm-elisp--persistent-help))
 
 
 ;; `helm-ag'
-(after! helm-ag
+(progn
   (defun +helm*pop-to-buffer (orig-fn &rest args)
     (pop-to-buffer
      (save-window-excursion (apply orig-fn args)
@@ -281,17 +291,16 @@ instead of switch-to-buffer-*."
 
 
 ;; `which-key'
-(after! which-key
-  (setq which-key-popup-type 'custom
-        which-key-custom-popup-max-dimensions-function (lambda (_) (which-key--side-window-max-dimensions))
-        which-key-custom-hide-popup-function #'which-key--hide-buffer-side-window
-        which-key-custom-show-popup-function
-        (lambda (act-popup-dim)
-          (cl-letf (((symbol-function 'display-buffer-in-side-window)
-                     (lambda (buffer alist)
-                       (+popup-display-buffer-stacked-side-window
-                        buffer (append '((vslot . -9999)) alist)))))
-            (which-key--show-buffer-side-window act-popup-dim)))))
+(setq which-key-popup-type 'custom
+      which-key-custom-popup-max-dimensions-function (lambda (_) (which-key--side-window-max-dimensions))
+      which-key-custom-hide-popup-function #'which-key--hide-buffer-side-window
+      which-key-custom-show-popup-function
+      (lambda (act-popup-dim)
+        (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                   (lambda (buffer alist)
+                     (+popup-display-buffer-stacked-side-window
+                      buffer (append '((vslot . -9999)) alist)))))
+          (which-key--show-buffer-side-window act-popup-dim))))
 
 
 ;; `windmove'

@@ -1,21 +1,28 @@
 ;;; lang/emacs-lisp/config.el -*- lexical-binding: t; -*-
 
-;; `elisp-mode' is always loaded at startup, so to lazy load its config we need
-;; to be creative. So we configure it the first tiem `emacs-lisp-mode' is run.
-(advice-add #'emacs-lisp-mode :before #'+emacs-lisp|init)
-;; And we remove `elisp-mode' so later invokations of (after! elisp-mode ...)
-;; work as expected.
+(defvar +emacs-lisp-enable-extra-fontification t
+  "If non-nil, fontify built-in functions and variables especially (symbols
+defined by Emacs, not Doom or packages). This can help make typos stand out.")
+
+
+;;
+;; elisp-mode deferral hack
+;;
+
+;; `elisp-mode' is loaded at startup. In order to lazy load its config we need
+;; to pretend it isn't loaded
 (delq 'elisp-mode features)
+;; ...until the first time `emacs-lisp-mode' runs
+(advice-add #'emacs-lisp-mode :before #'+emacs-lisp|init)
 
 (defun +emacs-lisp|init (&rest _)
-  ;; Some plugins (like yasnippet) will run `emacs-lisp-mode' early, prematurely
-  ;; triggering this function in a non-ideal environment (`emacs-lisp-mode-hook'
-  ;; is let-bound to nil). This breaks a lot of Doom setters, because they try
-  ;; to add hooks to `emacs-lisp-mode-hook'!
-  ;;
-  ;; This means, in some sessions, elisp-mode is never configured properly, so
-  ;; we have to make extra sure `emacs-lisp-mode' was executed interactively.
+  ;; Some plugins (like yasnippet) run `emacs-lisp-mode' early, to parse some
+  ;; elisp. This would prematurely trigger this function. In these cases,
+  ;; `emacs-lisp-mode-hook' is let-bound to nil or its hooks are delayed, so if
+  ;; we see either, keep pretending elisp-mode isn't loaded.
   (when (and emacs-lisp-mode-hook (not delay-mode-hooks))
+    ;; Otherwise, announce to the world elisp-mode has been loaded, so `after!'
+    ;; handlers can respond and configure elisp-mode as expected.
     (provide 'elisp-mode)
     (advice-remove #'emacs-lisp-mode #'+emacs-lisp|init)))
 
@@ -30,7 +37,7 @@
   (set-repl-handler! 'emacs-lisp-mode #'+emacs-lisp/repl)
   (set-eval-handler! 'emacs-lisp-mode #'+emacs-lisp-eval)
   (set-lookup-handlers! 'emacs-lisp-mode :documentation 'info-lookup-symbol)
-  (set-docset! '(lisp-mode emacs-lisp-mode) "Emacs Lisp")
+  (set-docset! 'emacs-lisp-mode "Emacs Lisp")
   (set-pretty-symbols! 'emacs-lisp-mode :lambda "lambda")
   (set-rotate-patterns! 'emacs-lisp-mode
     :symbols '(("t" "nil")
@@ -41,21 +48,34 @@
                ("add-hook" "remove-hook")
                ("add-hook!" "remove-hook!")))
 
+  ;; variable-width indentation is superior in elisp
+  (add-to-list 'doom-detect-indentation-excluded-modes 'emacs-lisp-mode nil #'eq)
+
   (add-hook! 'emacs-lisp-mode-hook
     #'(;; 3rd-party functionality
        auto-compile-on-save-mode doom|enable-delete-trailing-whitespace
        ;; fontification
-       rainbow-delimiters-mode highlight-quoted-mode highlight-numbers-mode +emacs-lisp|extra-fontification
+       rainbow-delimiters-mode highlight-quoted-mode
        ;; initialization
        +emacs-lisp|init-imenu +emacs-lisp|disable-flycheck-maybe))
 
-  (defun +emacs-lisp|extra-fontification ()
-    "Display lambda as a smybol and fontify doom module functions."
+  ;; Special fontification for doom
+  (font-lock-add-keywords
+   'emacs-lisp-mode
+   `(;; custom Doom cookies
+     ("^;;;###\\(autodef\\|if\\)[ \n]" (1 font-lock-warning-face t))
+     ;; doom/module functions
+     ("\\(^\\|\\s-\\|,\\)(\\(\\(doom\\|\\+\\)[^) ]+\\|[^) ]+!\\)[) \n]" (2 'font-lock-keyword-face))))
+
+  ;; Highlight symbols in standard library
+  (when +emacs-lisp-enable-extra-fontification
+    (load! "+symbols")
     (font-lock-add-keywords
-     nil `(;; Highlight custom Doom cookies
-           ("^;;;###\\(autodef\\|if\\)[ \n]" (1 font-lock-warning-face t))
-           ;; Highlight doom/module functions
-           ("\\(^\\|\\s-\\|,\\)(\\(\\(doom\\|\\+\\)[^) ]+\\|[^) ]+!\\)[) \n]" (2 font-lock-keyword-face)))))
+     'emacs-lisp-mode
+     `((,(concat "\\(?:(\\|#'\\)" (regexp-opt +emacs-lisp-function-list t) "\\_>") (1 'font-lock-function-name-face))
+       (,(concat "\\(?:(\\|#'\\)" (regexp-opt +emacs-lisp-command-list t) "\\_>")  (1 'font-lock-function-name-face))
+       (,(regexp-opt +emacs-lisp-variable-list 'symbols) . font-lock-variable-name-face)
+       (,(regexp-opt +emacs-lisp-option-list 'symbols)   . font-lock-variable-name-face))))
 
   (defun +emacs-lisp|init-imenu ()
     "Improve imenu support with better expression regexps and Doom-specific forms."
