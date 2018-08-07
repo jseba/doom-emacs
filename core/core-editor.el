@@ -221,20 +221,22 @@ savehist file."
         `(("." . ,(concat doom-cache-dir "undo-tree-hist/"))))
   (global-undo-tree-mode +1)
 
-  ;; compress undo with xz
-  (advice-add #'undo-tree-make-history-save-file-name :filter-return
-              (cond ((executable-find "zstd") (lambda (file) (concat file ".zst")))
-                    ((executable-find "gzip") (lambda (file) (concat file ".gz")))))
-
   (advice-add #'undo-tree-load-history :around #'doom*shut-up)
 
-  (defun doom*strip-text-properties-from-undo-history (orig-fn &rest args)
+  ;; compress undo history with xz
+  (defun doom*undo-tree-make-history-save-file-name (file)
+    (cond ((executable-find "zstd") (concat file ".zst"))
+          ((executable-find "gzip") (concat file ".gz"))
+          (file)))
+  (advice-add #'undo-tree-make-history-save-file-name :filter-return
+              #'doom*undo-tree-make-history-save-file-name)
+
+  (defun doom*strip-text-properties-from-undo-history (&rest args)
     (dolist (item buffer-undo-list)
       (and (consp item)
            (stringp (car item))
-           (setcar item (substring-no-properties (car item)))))
-    (apply orig-fn args))
-  (advice-add 'undo-list-transfer-to-tree :around #'doom*strip-text-properties-from-undo-history)
+           (setcar item (substring-no-properties (car item))))))
+  (advice-add 'undo-list-transfer-to-tree :before #'doom*strip-text-properties-from-undo-history)
 
   (defun doom*compress-undo-tree-history (orig-fn &rest args)
     (cl-letf* ((jka-compr-verbose nil)
